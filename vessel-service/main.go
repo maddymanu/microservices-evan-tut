@@ -3,51 +3,44 @@ package main
 
 import (
 	pb "github.com/maddymanu/microservices-evan-tut/vessel-service/proto/vessel"
-	"errors"
-	"context"
+	"os"
+	"github.com/labstack/gommon/log"
 	"github.com/micro/go-micro"
-	"fmt"
+)
+const (
+	defaultHost = "localhost:27017"
 )
 
-type Repository interface {
-	FindAvailable(*pb.Specification) (*pb.Vessel, error)
-}
-
-type VesselRepository struct {
-	vessels []*pb.Vessel
-}
-
-func (repo *VesselRepository) FindAvailable(spec *pb.Specification) (*pb.Vessel, error) {
-	for _, vessel := range repo.vessels {
-		if spec.Capacity <= vessel.Capacity && spec.MaxWeight <= vessel.MaxWeight {
-			return vessel, nil
-		}
+func createDummyData(repo Repository) {
+	defer repo.Close()
+	vessels := []*pb.Vessel{
+		{Id: "vessel001", Name: "Kane's Salty Secret", MaxWeight: 200000, Capacity: 500},
 	}
-	return nil, errors.New("No vessel found by that spec")
-}
-
-type service struct {
-	repo Repository
-}
-
-func (s *service) FindAvailable(ctx context.Context, req *pb.Specification, res *pb.Response) error {
-
-	// Find the next available vessel
-	vessel, err := s.repo.FindAvailable(req)
-	if err != nil {
-		return err
+	for _, v := range vessels {
+		repo.Create(v)
 	}
-
-	// Set the vessel as part of the response message type
-	res.Vessel = vessel
-	return nil
 }
+
 
 func main() {
-	vessels := []*pb.Vessel{
-		&pb.Vessel{Id: "vessel001", Name: "Boaty McBoatface", MaxWeight: 200000, Capacity: 500},
+	mongoHost := os.Getenv("DB_HOST")
+
+	if mongoHost == "" {
+		mongoHost = defaultHost
 	}
-	repo := &VesselRepository{vessels}
+
+	mongoSession, err := CreateSession(mongoHost)
+	defer mongoSession.Close()
+
+	if err != nil {
+		log.Fatal("Error connetincting to mongo db")
+	}
+
+	repo := &VesselRepository{
+		session:mongoSession.Copy(),
+	}
+
+	createDummyData(repo)
 
 	srv := micro.NewService(
 		micro.Name("go.micro.srv.vessel"),
@@ -56,10 +49,9 @@ func main() {
 
 	srv.Init()
 
-	// Register our implementation with
-	pb.RegisterVesselServiceHandler(srv.Server(), &service{repo})
+	pb.RegisterVesselServiceHandler(srv.Server(), &service{mongoSession})
 
 	if err := srv.Run(); err != nil {
-		fmt.Println(err)
+		log.Fatal("Fatal micro run")
 	}
 }
