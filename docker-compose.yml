@@ -8,6 +8,8 @@ services:
     build: ./consignment-cli
     environment:
       MICRO_REGISTRY: "mdns"
+    depends_on:
+      - consignment-service
 
   user-cli:
       build: ./user-cli
