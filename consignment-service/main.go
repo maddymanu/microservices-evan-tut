@@ -1,12 +1,18 @@
 package main
 
 import (
-	"github.com/labstack/gommon/log"
 	"os"
 	vesselProto "github.com/maddymanu/microservices-evan-tut/vessel-service/proto/vessel"
+	userService "github.com/maddymanu/microservices-evan-tut/user-service/proto/user"
 	pb "github.com/maddymanu/microservices-evan-tut/consignment-service/proto/consignment"
 	"github.com/micro/go-micro"
 	"fmt"
+	"github.com/micro/go-micro/server"
+	"context"
+	"github.com/micro/go-micro/metadata"
+	"log"
+	"errors"
+	"github.com/micro/go-micro/client"
 )
 
 
@@ -45,6 +51,7 @@ func main() {
 		// This name must match the package name given in your protobuf definition
 		micro.Name("go.micro.srv.consignment"),
 		micro.Version("latest"),
+		micro.WrapHandler(AuthWrapper),
 	)
 
 	vesselClient := vesselProto.NewVesselServiceClient("go.micro.srv.vessel", srv.Client())
@@ -59,4 +66,32 @@ func main() {
 		fmt.Println(err)
 	}
 
+}
+
+func AuthWrapper(fn server.HandlerFunc) server.HandlerFunc  {
+	return func(ctx context.Context, req server.Request, resp interface{}) error {
+		meta, ok := metadata.FromContext(ctx)
+
+		if !ok {
+			log.Println("bad things happened while parsing metadata")
+			return errors.New("no auth metadata found, bad request")
+		}
+
+		log.Println(meta)
+
+		token := meta["Token"]
+		log.Println("Found token: ", token)
+
+		authClient := userService.NewUserServiceClient("go.micro.srv.user", client.DefaultClient)
+		_, err := authClient.ValidateToken(context.Background(), &userService.Token{
+			Token:token,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		err = fn(ctx, req, resp)
+		return err
+	}
 }

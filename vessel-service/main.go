@@ -33,7 +33,7 @@ func main() {
 	defer mongoSession.Close()
 
 	if err != nil {
-		log.Fatal("Error connetincting to mongo db")
+		log.Fatal("Error connetincting to mongo db", err)
 	}
 
 	repo := &VesselRepository{
